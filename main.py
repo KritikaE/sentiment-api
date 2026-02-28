@@ -13,7 +13,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# Gemini uses OpenAI-compatible API!
+client = OpenAI(
+    api_key=os.environ.get("GEMINI_API_KEY"),
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+)
 
 class Comment(BaseModel):
     comment: str
@@ -26,7 +30,7 @@ class Sentiment(BaseModel):
 async def analyze(req: Comment):
     try:
         res = client.beta.chat.completions.parse(
-            model="gpt-4.1-mini",
+            model="gemini-2.0-flash",
             messages=[
                 {"role": "system", "content": "Analyze sentiment. sentiment: positive/negative/neutral, rating: 1-5."},
                 {"role": "user", "content": req.comment}
