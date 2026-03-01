@@ -1,10 +1,23 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from groq import Groq
 import json
 import os
+import asyncio
+import httpx
 
 app = FastAPI()
+
+# Fix CORS so the grader can reach your API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 class CommentRequest(BaseModel):
@@ -29,7 +42,7 @@ Format: {"sentiment": "positive", "rating": 5}
                     "content": request.comment
                 }
             ],
-            response_format={"type": "json_object"},  # forces JSON output
+            response_format={"type": "json_object"},
             temperature=0.1
         )
 
@@ -40,3 +53,21 @@ Format: {"sentiment": "positive", "rating": 5}
         return {"error": "Failed to parse AI response as JSON"}
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/")
+async def root():
+    return {"status": "alive"}
+
+async def keep_alive():
+    await asyncio.sleep(60)
+    async with httpx.AsyncClient() as http_client:
+        while True:
+            try:
+                await http_client.get("https://sentiment-api-7acd.onrender.com/")
+            except:
+                pass
+            await asyncio.sleep(600)
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(keep_alive())
