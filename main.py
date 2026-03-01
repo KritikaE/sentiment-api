@@ -1,11 +1,11 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import anthropic
+from groq import Groq
 import json
 import os
 
 app = FastAPI()
-client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 class CommentRequest(BaseModel):
     comment: str
@@ -13,24 +13,27 @@ class CommentRequest(BaseModel):
 @app.post("/comment")
 async def analyze_comment(request: CommentRequest):
     try:
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=100,
-            system="""You are a sentiment analysis assistant.
-Analyze the sentiment of the user's comment.
-You MUST respond with ONLY valid JSON in this exact format, nothing else:
-{"sentiment": "positive", "rating": 5}
-
-Rules:
-- sentiment must be exactly one of: "positive", "negative", "neutral"
-- rating must be an integer from 1 to 5 (5=very positive, 1=very negative)
-- No explanation, no markdown, no code blocks, just the raw JSON""",
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
             messages=[
-                {"role": "user", "content": request.comment}
-            ]
+                {
+                    "role": "system",
+                    "content": """You are a sentiment analysis assistant.
+Respond with ONLY valid JSON, nothing else. No markdown, no explanation.
+Format: {"sentiment": "positive", "rating": 5}
+- sentiment: exactly "positive", "negative", or "neutral"
+- rating: integer 1-5 (5=very positive, 1=very negative)"""
+                },
+                {
+                    "role": "user",
+                    "content": request.comment
+                }
+            ],
+            response_format={"type": "json_object"},  # forces JSON output
+            temperature=0.1
         )
 
-        result = json.loads(response.content[0].text.strip())
+        result = json.loads(response.choices[0].message.content)
         return result
 
     except json.JSONDecodeError:
