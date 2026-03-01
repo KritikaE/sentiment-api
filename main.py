@@ -1,42 +1,39 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from openai import OpenAI
+import anthropic
+import json
 import os
 
 app = FastAPI()
+client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Gemini uses OpenAI-compatible API!
-client = OpenAI(
-    api_key=os.environ.get("GEMINI_API_KEY"),
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-)
-
-class Comment(BaseModel):
+class CommentRequest(BaseModel):
     comment: str
 
-class Sentiment(BaseModel):
-    sentiment: str
-    rating: int
-
 @app.post("/comment")
-async def analyze(req: Comment):
+async def analyze_comment(request: CommentRequest):
     try:
-        res = client.beta.chat.completions.parse(
-            model="gemini-2.0-flash",
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=100,
+            system="""You are a sentiment analysis assistant.
+Analyze the sentiment of the user's comment.
+You MUST respond with ONLY valid JSON in this exact format, nothing else:
+{"sentiment": "positive", "rating": 5}
+
+Rules:
+- sentiment must be exactly one of: "positive", "negative", "neutral"
+- rating must be an integer from 1 to 5 (5=very positive, 1=very negative)
+- No explanation, no markdown, no code blocks, just the raw JSON""",
             messages=[
-                {"role": "system", "content": "Analyze sentiment. sentiment: positive/negative/neutral, rating: 1-5."},
-                {"role": "user", "content": req.comment}
-            ],
-            response_format=Sentiment
+                {"role": "user", "content": request.comment}
+            ]
         )
-        return res.choices[0].message.parsed
+
+        result = json.loads(response.content[0].text.strip())
+        return result
+
+    except json.JSONDecodeError:
+        return {"error": "Failed to parse AI response as JSON"}
     except Exception as e:
         return {"error": str(e)}
